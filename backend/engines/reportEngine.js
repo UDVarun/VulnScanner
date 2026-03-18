@@ -172,22 +172,28 @@ function generatePDF(scan, vulnerabilities) {
         vy += 12;
         doc.rect(60, vy, doc.page.width - 120, 1).fill('#30363d');
         vy += 4;
+        
+        const evidenceStr = vuln.evidence.substring(0, 300).replace(/\r?\n|\r/g, ' ');
+        const textH = doc.heightOfString(evidenceStr, { width: doc.page.width - 130 });
         doc.fill('#00d4ff').fontSize(8).font('Helvetica').text(
-          vuln.evidence.substring(0, 200),
+          evidenceStr,
           65, vy, { width: doc.page.width - 130 }
         );
-        vy += 20;
+        vy += textH + 10;
       }
 
       // Recommendation
       if (vuln.recommendation) {
         doc.fill('#8b949e').fontSize(9).font('Helvetica').text('Recommendation:', 60, vy);
         vy += 12;
+        
+        const recStr = vuln.recommendation.replace(/\r?\n|\r/g, ' ');
+        const textH = doc.heightOfString(recStr, { width: doc.page.width - 130 });
         doc.fill('#e6edf3').fontSize(8).font('Helvetica').text(
-          vuln.recommendation,
+          recStr,
           65, vy, { width: doc.page.width - 130 }
         );
-        vy += 30;
+        vy += textH + 15;
       }
 
       doc.moveTo(50, vy).lineTo(doc.page.width - 50, vy).strokeColor('#30363d').lineWidth(0.5).stroke();
