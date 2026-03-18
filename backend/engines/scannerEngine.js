@@ -118,11 +118,11 @@ async function checkSecurityHeaders(endpoint) {
   const findings = [];
   const response = await makeRequest(endpoint.url);
 
-  if (response.error) return findings;
+  if (response.error || response.status >= 400 || response.status === 0) return findings;
 
   for (const headerDef of REQUIRED_SECURITY_HEADERS) {
     const headerVal = response.headers[headerDef.name];
-    if (!headerVal) {
+    if (headerVal === undefined || headerVal === null || headerVal === '') {
       findings.push({
         type: 'Missing Security Header',
         severity: 'Medium',
