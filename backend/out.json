@@ -1,0 +1,52 @@
+[
+  {
+    "type": "Missing Security Header",
+    "severity": "Medium",
+    "endpoint": "http://google.com/url?q=https://example.com",
+    "parameter": "X-Frame-Options",
+    "payload": "N/A",
+    "evidence": "Missing HTTP security header: X-Frame-Options",
+    "confidence": "High",
+    "recommendation": "Add X-Frame-Options: DENY or SAMEORIGIN to prevent clickjacking attacks."
+  },
+  {
+    "type": "Missing Security Header",
+    "severity": "Medium",
+    "endpoint": "http://google.com/url?q=https://example.com",
+    "parameter": "Content-Security-Policy",
+    "payload": "N/A",
+    "evidence": "Missing HTTP security header: Content-Security-Policy",
+    "confidence": "High",
+    "recommendation": "Implement a strong Content-Security-Policy header to prevent XSS and data injection attacks."
+  },
+  {
+    "type": "Missing Security Header",
+    "severity": "Medium",
+    "endpoint": "http://google.com/url?q=https://example.com",
+    "parameter": "X-XSS-Protection",
+    "payload": "N/A",
+    "evidence": "Missing HTTP security header: X-XSS-Protection",
+    "confidence": "High",
+    "recommendation": "Add X-XSS-Protection: 1; mode=block to enable browser-level XSS filtering."
+  },
+  {
+    "type": "Missing Security Header",
+    "severity": "Medium",
+    "endpoint": "http://google.com/url?q=https://example.com",
+    "parameter": "Strict-Transport-Security (HSTS)",
+    "payload": "N/A",
+    "evidence": "Missing HTTP security header: Strict-Transport-Security (HSTS)",
+    "confidence": "High",
+    "recommendation": "Implement HSTS with a minimum max-age of 31536000 (1 year) to enforce HTTPS."
+  },
+  {
+    "type": "Missing Security Header",
+    "severity": "Medium",
+    "endpoint": "http://google.com/url?q=https://example.com",
+    "parameter": "X-Content-Type-Options",
+    "payload": "N/A",
+    "evidence": "Missing HTTP security header: X-Content-Type-Options",
+    "confidence": "High",
+    "recommendation": "Add X-Content-Type-Options: nosniff to prevent MIME type sniffing attacks."
+  }
+]

@@ -29,7 +29,6 @@ const SQL_ERROR_PATTERNS = [
   /You have an error in your SQL syntax/i,
   /supplied argument is not a valid MySQL/i,
   /Column count doesn't match/i,
-  /UNION.*SELECT/i,
 ];
 
 // XSS detection: payload reflection
@@ -75,8 +74,8 @@ function detectSQLi(payload, baseline, injected) {
 
   // 4. Time-based detection for SLEEP payloads
   if (payload.includes('SLEEP') || payload.includes('WAITFOR')) {
-    if (injected.responseTime > (baseline.responseTime || 0) + 4000) {
-      // > 4 seconds delay over baseline
+    if (injected.responseTime > (baseline.responseTime || 0) + 4500) {
+      // > 4.5 seconds delay over baseline
       evidence.push(`Time-based SQLi: response took ${injected.responseTime}ms (vs baseline ${baseline.responseTime || 0}ms)`);
       score += 3;
     }
