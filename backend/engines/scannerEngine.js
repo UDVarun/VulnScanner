@@ -7,8 +7,8 @@ const axios = require('axios');
 const { getPayloads } = require('./payloadEngine');
 const { analyze } = require('./analyzerEngine');
 
-const REQUEST_TIMEOUT = 12000;
-const DELAY_BETWEEN_REQUESTS = 300; // ms — be respectful to target
+const REQUEST_TIMEOUT = 5000;
+const DELAY_BETWEEN_REQUESTS = 20; // ms — fast timing
 
 const DEFAULT_HEADERS = {
   'User-Agent': 'VulnScanner/1.0 (Security Research Tool)',
@@ -291,17 +291,29 @@ async function scanAll(endpoints, onProgress) {
     allFindings.push(...authFindings);
   }
 
-  for (let i = 0; i < endpoints.length; i++) {
-    const endpoint = endpoints[i];
-    try {
-      const findings = await scanEndpoint(endpoint);
-      allFindings.push(...findings);
-    } catch (err) {
-      console.warn(`[Scanner] Error scanning ${endpoint.url}: ${err.message}`);
-    }
+  // Process endpoints concurrently in chunks of 5
+  const CHUNK_SIZE = 5;
+  for (let i = 0; i < endpoints.length; i += CHUNK_SIZE) {
+    const chunk = endpoints.slice(i, i + CHUNK_SIZE);
+    
+    // Scan chunk concurrently
+    const chunkResults = await Promise.all(
+      chunk.map(async (endpoint, idx) => {
+        try {
+          const findings = await scanEndpoint(endpoint);
+          return { findings, idx: i + idx };
+        } catch (err) {
+          console.warn(`[Scanner] Error scanning ${endpoint.url}: ${err.message}`);
+          return { findings: [], idx: i + idx };
+        }
+      })
+    );
 
-    if (onProgress) {
-      onProgress(i + 1, endpoints.length);
+    for (const result of chunkResults) {
+      allFindings.push(...result.findings);
+      if (onProgress) {
+        onProgress(result.idx + 1, endpoints.length);
+      }
     }
   }
 

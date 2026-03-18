@@ -30,6 +30,7 @@ const ScanSchema = new mongoose.Schema({
     default: 0,
   },
   summary: {
+    critical: { type: Number, default: 0 },
     high: { type: Number, default: 0 },
     medium: { type: Number, default: 0 },
     low: { type: Number, default: 0 },
