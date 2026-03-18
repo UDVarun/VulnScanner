@@ -34,6 +34,11 @@ function severityColor(severity) {
 function generatePDF(scan, vulnerabilities) {
   const doc = new PDFDocument({ margin: 50, size: 'A4', bufferPages: true });
 
+  // Ensure any auto-generated pages (from text wrapping) get the dark background
+  doc.on('pageAdded', () => {
+    doc.rect(0, 0, doc.page.width, doc.page.height).fill('#0d1117');
+  });
+
   // ─── COVER PAGE ───────────────────────────────────────────
   doc.rect(0, 0, doc.page.width, doc.page.height).fill('#0d1117');
 
@@ -119,10 +124,9 @@ function generatePDF(scan, vulnerabilities) {
     let vulnIndex = 1;
 
     for (const vuln of vulnerabilities) {
-      // Page break if needed
-      if (vy > doc.page.height - 160) {
+      // Page break if needed: require 230 points of clearance to prevent auto page-wrapping blank pages
+      if (vy > doc.page.height - 230) {
         doc.addPage();
-        doc.rect(0, 0, doc.page.width, doc.page.height).fill('#0d1117');
         vy = 50;
       }
 
