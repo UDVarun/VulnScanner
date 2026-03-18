@@ -47,9 +47,11 @@ function detectSQLi(payload, baseline, injected) {
 
   // 1. Error pattern match in response body
   const body = (injected.body || '').substring(0, 50000);
+  const baseBody = (baseline.body || '').substring(0, 50000);
   for (const pattern of SQL_ERROR_PATTERNS) {
     const match = body.match(pattern);
-    if (match) {
+    // Ensure the error pattern isn't already naturally occurring on the page
+    if (match && !baseBody.match(pattern)) {
       evidence.push(`SQL error detected: "${match[0].trim()}"`);
       score += 3;
       break;
@@ -73,9 +75,9 @@ function detectSQLi(payload, baseline, injected) {
 
   // 4. Time-based detection for SLEEP payloads
   if (payload.includes('SLEEP') || payload.includes('WAITFOR')) {
-    if (injected.responseTime > 1800) {
-      // > 1.8 seconds delay
-      evidence.push(`Time-based SQLi: response took ${injected.responseTime}ms`);
+    if (injected.responseTime > (baseline.responseTime || 0) + 4000) {
+      // > 4 seconds delay over baseline
+      evidence.push(`Time-based SQLi: response took ${injected.responseTime}ms (vs baseline ${baseline.responseTime || 0}ms)`);
       score += 3;
     }
   }

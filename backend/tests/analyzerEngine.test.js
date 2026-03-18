@@ -21,9 +21,9 @@ describe('Analyzer Engine', () => {
 
     test('detects time-based SQLi (SLEEP)', () => {
       const baseline = { status: 200, responseTime: 100 };
-      const injected = { status: 200, responseTime: 2500 };
+      const injected = { status: 200, responseTime: 5500 };
 
-      const result = analyze('SQL Injection', "1' AND SLEEP(2) --", baseline, injected);
+      const result = analyze('SQL Injection', "1' AND SLEEP(5) --", baseline, injected);
       expect(result.vulnerable).toBe(true);
       expect(result.evidence).toContain('Time-based SQLi');
     });

