@@ -184,18 +184,13 @@ async function checkAuthBypass(endpoint) {
   return findings;
 }
 
-/**
- * Test a single parameter for injection vulnerabilities
- */
 async function testParameter(endpoint, paramName, vulnType) {
-  const findings = [];
   const payloads = getPayloads(vulnType);
 
   // Baseline request
   const baseline = await makeRequest(endpoint.url, { method: endpoint.method });
-  await sleep(DELAY_BETWEEN_REQUESTS);
 
-  for (const payloadObj of payloads) {
+  const promises = payloads.map(async (payloadObj) => {
     const payload = payloadObj.value;
 
     let injectedUrl = endpoint.url;
@@ -210,12 +205,10 @@ async function testParameter(endpoint, paramName, vulnType) {
     }
 
     const injected = await makeRequest(injectedUrl, requestOptions);
-    await sleep(DELAY_BETWEEN_REQUESTS);
-
     const result = analyze(vulnType, payload, baseline, injected);
 
     if (result.vulnerable && result.confidence !== 'Low') {
-      findings.push({
+      return {
         type: vulnType,
         endpoint: endpoint.url,
         parameter: paramName,
@@ -224,13 +217,18 @@ async function testParameter(endpoint, paramName, vulnType) {
         evidence: result.evidence,
         confidence: result.confidence,
         recommendation: getRecommendation(vulnType),
-      });
-      // One confirmed finding per parameter per type is enough
-      break;
+      };
     }
-  }
+    return null;
+  });
 
-  return findings;
+  const allResults = await Promise.all(promises);
+  const confirmed = allResults.filter(r => r !== null);
+  
+  if (confirmed.length > 0) {
+    return [confirmed[0]]; // One confirmed finding per parameter per type is enough
+  }
+  return [];
 }
 
 /**
@@ -258,22 +256,19 @@ async function scanEndpoint(endpoint) {
     // ignore
   }
 
-  for (const param of paramsToTest) {
-    // SQL Injection
-    const sqlFindings = await testParameter(endpoint, param.name, 'SQL Injection');
-    allFindings.push(...sqlFindings);
+  const paramPromises = paramsToTest.map(async (param) => {
+    const [sql, xss, hdr, pt] = await Promise.all([
+      testParameter(endpoint, param.name, 'SQL Injection'),
+      testParameter(endpoint, param.name, 'XSS'),
+      testParameter(endpoint, param.name, 'Header Injection'),
+      testParameter(endpoint, param.name, 'Path Traversal')
+    ]);
+    return [...sql, ...xss, ...hdr, ...pt];
+  });
 
-    // XSS
-    const xssFindings = await testParameter(endpoint, param.name, 'XSS');
-    allFindings.push(...xssFindings);
-
-    // Header Injection
-    const hdrFindings = await testParameter(endpoint, param.name, 'Header Injection');
-    allFindings.push(...hdrFindings);
-
-    // Path Traversal
-    const ptFindings = await testParameter(endpoint, param.name, 'Path Traversal');
-    allFindings.push(...ptFindings);
+  const paramResults = await Promise.all(paramPromises);
+  for (const res of paramResults) {
+    allFindings.push(...res);
   }
 
   return allFindings;
