@@ -6,13 +6,18 @@ import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
 
-const SEVERITY_ORDER = ['Critical', 'High', 'Medium', 'Low', 'Info'];
+const SEVERITY_ORDER = ['critical', 'high', 'medium', 'low', 'info', 'Critical', 'High', 'Medium', 'Low', 'Info'];
 const SEVERITY_COLORS = {
   Critical: '#ff2222',
   High: '#ff4444',
   Medium: '#ffaa00',
   Low: '#00cc66',
   Info: '#6688cc',
+  critical: '#ff2222',
+  high: '#ff4444',
+  medium: '#ffaa00',
+  low: '#00cc66',
+  info: '#6688cc',
 };
 
 export default function Results() {
@@ -43,8 +48,16 @@ export default function Results() {
   // Apply filters
   useEffect(() => {
     let result = [...vulns];
-    if (severityFilter !== 'All') result = result.filter((v) => v.severity === severityFilter);
+    if (severityFilter !== 'All') result = result.filter((v) => (v.severity || '').toLowerCase() === severityFilter.toLowerCase());
     if (typeFilter !== 'All') result = result.filter((v) => v.type === typeFilter);
+
+    // Auto-fallback if the filtered list is empty but we have vulns overall
+    if (result.length === 0 && vulns.length > 0 && (severityFilter !== 'All' || typeFilter !== 'All')) {
+      if (severityFilter !== 'All' && vulns.filter(v => (v.severity || '').toLowerCase() === severityFilter.toLowerCase()).length === 0) {
+        setSeverityFilter('All');
+      }
+    }
+
     setFiltered(result);
   }, [severityFilter, typeFilter, vulns]);
 
@@ -100,6 +113,10 @@ export default function Results() {
         <div className="stat-card low">
           <div className="stat-value">{scan.summary?.low || 0}</div>
           <div className="stat-label">Low</div>
+        </div>
+        <div className="stat-card info" style={{ borderTop: '3px solid #6b7280', color: '#9ca3af' }}>
+          <div className="stat-value" style={{ color: '#9ca3af' }}>{scan.summary?.info || 0}</div>
+          <div className="stat-label">Info</div>
         </div>
         <div className="stat-card total">
           <div className="stat-value">{scan.summary?.total || 0}</div>

@@ -98,17 +98,30 @@ async function startScan(scanId, targetUrl, io) {
     const cveCache = {};
 
     for (const finding of rawFindings) {
-      // Fetch CVE once per type
-      if (!cveCache[finding.type]) {
+      if (finding.suppress) continue;
+      
+      const isInfo = (finding.severity && finding.severity.toLowerCase() === 'info');
+
+      // Fetch CVE once per type (skip for info)
+      if (!isInfo && !cveCache[finding.type]) {
         try {
           cveCache[finding.type] = await lookupCVE(finding.type);
         } catch {
           cveCache[finding.type] = { cveId: 'N/A', cvssScore: 0, severity: 'Low', description: '' };
         }
+      } else if (isInfo && !cveCache[finding.type]) {
+        cveCache[finding.type] = { cveId: 'N/A', cvssScore: 0, severity: 'info', description: '' };
       }
 
       const cveData = cveCache[finding.type];
       const severity = finding.severity || cvssToSeverity(cveData.cvssScore);
+
+      // Do not persist suppressed or info findings
+      if (finding.suppress || severity.toLowerCase() === 'info') {
+        // Still push it to savedVulns so it's counted in summary.info
+        savedVulns.push({ severity, ...finding });
+        continue;
+      }
 
       const vuln = new Vulnerability({
         scanId,
@@ -142,14 +155,16 @@ async function startScan(scanId, targetUrl, io) {
     }
 
     // ── PHASE 5: Build summary and complete ───────────────
+    // savedVulns contains both saved Mongoose docs AND plain objects for informational ones
+    const realFindings = savedVulns.filter((v) => v.severity.toLowerCase() !== 'info');
     const summary = {
-      high: savedVulns.filter((v) => v.severity === 'High').length,
-      medium: savedVulns.filter((v) => v.severity === 'Medium').length,
-      low: savedVulns.filter((v) => v.severity === 'Low').length,
-      info: savedVulns.filter((v) => v.severity === 'Info').length,
-      total: savedVulns.length,
+      critical: realFindings.filter((v) => v.severity.toLowerCase() === 'critical').length,
+      high: realFindings.filter((v) => v.severity.toLowerCase() === 'high').length,
+      medium: realFindings.filter((v) => v.severity.toLowerCase() === 'medium').length,
+      low: realFindings.filter((v) => v.severity.toLowerCase() === 'low').length,
+      info: savedVulns.filter((v) => v.severity.toLowerCase() === 'info').length,
+      total: realFindings.length, // total only includes real findings, not info
     };
-    summary.critical = savedVulns.filter((v) => v.severity === 'Critical').length;
 
     await Scan.findByIdAndUpdate(scanId, {
       status: 'completed',

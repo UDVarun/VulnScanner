@@ -7,6 +7,92 @@ const axios = require('axios');
 const { getPayloads } = require('./payloadEngine');
 const { analyze } = require('./analyzerEngine');
 
+const TRUSTED_DOMAINS = new Set([
+  'google.com', 'youtube.com', 'facebook.com', 'twitter.com', 'x.com',
+  'instagram.com', 'linkedin.com', 'github.com', 'amazon.com',
+  'microsoft.com', 'apple.com', 'wikipedia.org', 'reddit.com',
+  'netflix.com', 'yahoo.com', 'bing.com', 'live.com', 'office.com',
+  'cloudflare.com', 'akamai.com', 'fastly.com', 'shopify.com',
+  'wordpress.com', 'blogger.com', 'tumblr.com', 'medium.com',
+  'stackoverflow.com', 'mozilla.org', 'w3.org', 'adobe.com'
+]);
+
+function extractHostname(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '').toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function isTrustedDomain(url) {
+  const hostname = extractHostname(url);
+  // Check exact match and parent domain match
+  for (const trusted of TRUSTED_DOMAINS) {
+    if (hostname === trusted || hostname.endsWith('.' + trusted)) return true;
+  }
+  return false;
+}
+
+function isHTTPS(url) {
+  return url.trim().toLowerCase().startsWith('https://');
+}
+
+/**
+ * Compute adjusted severity and confidence for a header finding.
+ * Returns { severity, cvss, confidence, suppress }
+ */
+function scoreHeaderFinding({ targetUrl, header, baseSeverity, baseCvss, baseConfidence, signals = 1 }) {
+  const trusted = isTrustedDomain(targetUrl);
+  const secure = isHTTPS(targetUrl);
+
+  // Trusted domain → always informational
+  if (trusted) {
+    return { severity: 'info', cvss: 0, confidence: baseConfidence * 0.4, suppress: false };
+  }
+
+  // Low confidence → suppress entirely (do not save to DB)
+  if (baseConfidence < 0.4) {
+    return { severity: 'info', cvss: 0, confidence: baseConfidence, suppress: true };
+  }
+
+  // Only 1 signal and HTTPS → downgrade
+  if (signals < 2 && secure) {
+    const newSeverity = baseSeverity === 'Medium' ? 'Low' : baseSeverity === 'High' ? 'Medium' : 'Info';
+    return { severity: newSeverity.toLowerCase(), cvss: Math.max(0, baseCvss - 2.0), confidence: baseConfidence * 0.75, suppress: false };
+  }
+
+  // Only 1 signal (HTTP) → keep but lower confidence
+  if (signals < 2) {
+    return { severity: baseSeverity.toLowerCase(), cvss: baseCvss, confidence: baseConfidence * 0.85, suppress: false };
+  }
+
+  // 2+ signals → full severity (no change)
+  return { severity: baseSeverity.toLowerCase(), cvss: baseCvss, confidence: baseConfidence, suppress: false };
+}
+
+const headerCvssMap = {
+  'Content-Security-Policy': 6.1,
+  'Strict-Transport-Security': 5.9,
+  'X-Frame-Options': 5.4,
+  'X-Content-Type-Options': 4.3,
+  'Referrer-Policy': 3.1,
+  'Permissions-Policy': 3.0,
+  'X-XSS-Protection': 4.0,
+  'Cache-Control': 3.5
+};
+
+const headerRecommendations = {
+  'Content-Security-Policy': 'Add a Content-Security-Policy header to restrict resource loading and prevent XSS attacks.',
+  'Strict-Transport-Security': 'Add HSTS header: Strict-Transport-Security: max-age=31536000; includeSubDomains',
+  'X-Frame-Options': 'Add X-Frame-Options: DENY or SAMEORIGIN to prevent clickjacking.',
+  'X-Content-Type-Options': 'Add X-Content-Type-Options: nosniff to prevent MIME-type sniffing.',
+  'Referrer-Policy': 'Add Referrer-Policy: strict-origin-when-cross-origin to control referrer information.',
+  'Permissions-Policy': 'Add Permissions-Policy header to restrict browser feature access.',
+  'X-XSS-Protection': 'Add X-XSS-Protection: 1; mode=block (legacy browsers support).',
+  'Cache-Control': 'Add Cache-Control: no-store for sensitive pages.'
+};
+
 const REQUEST_TIMEOUT = 5000;
 const DELAY_BETWEEN_REQUESTS = 20; // ms — fast timing
 
@@ -123,16 +209,29 @@ async function checkSecurityHeaders(endpoint) {
   for (const headerDef of REQUIRED_SECURITY_HEADERS) {
     const headerVal = response.headers[headerDef.name];
     if (headerVal === undefined || headerVal === null || headerVal === '') {
-      findings.push({
-        type: 'Missing Security Header',
-        severity: 'Medium',
-        endpoint: endpoint.url,
-        parameter: headerDef.description,
-        payload: 'N/A',
-        evidence: `Missing HTTP security header: ${headerDef.description}`,
-        confidence: 'High',
-        recommendation: headerDef.recommendation,
+      const scored = scoreHeaderFinding({
+        targetUrl: endpoint.url,
+        header: headerDef.description,
+        baseSeverity: 'Medium',
+        baseCvss: headerCvssMap[headerDef.description] || 5.3,
+        baseConfidence: 0.65,
+        signals: 1
       });
+
+      if (!scored.suppress) {
+        findings.push({
+          type: 'Missing Security Header',
+          severity: scored.severity,
+          cvssScore: scored.cvss,
+          confidence: scored.confidence < 0.5 ? 'Low' : scored.confidence < 0.8 ? 'Medium' : 'High', // map to enum just in case
+          endpoint: endpoint.url,
+          parameter: headerDef.description,
+          payload: 'N/A',
+          evidence: `Header "${headerDef.description}" was not present in the HTTP response.`,
+          recommendation: headerRecommendations[headerDef.description] || `Add the ${headerDef.description} header to all responses.`,
+          suppress: scored.suppress
+        });
+      }
     }
   }
 
@@ -177,17 +276,30 @@ async function checkAuthBypass(endpoint) {
         !response.body.toLowerCase().includes('sign in') &&
         !response.body.toLowerCase().includes('unauthorized')
       ) {
-        findings.push({
-          type: 'Auth Bypass',
-          severity: 'High',
-          endpoint: targetUrl,
-          parameter: 'Path Access',
-          payload: path,
-          evidence: `Protected path accessible without authentication (HTTP ${response.status}, ${response.body.length} bytes)`,
-          confidence: 'Medium',
-          recommendation:
-            'Implement proper authentication and authorization checks on all administrative endpoints.',
+        const signals = isHTTPS(targetUrl) ? 1 : 2;
+        const scored = scoreHeaderFinding({
+          targetUrl,
+          header: 'auth-bypass',
+          baseSeverity: 'High',
+          baseCvss: 7.5,
+          baseConfidence: 0.7,
+          signals
         });
+
+        if (!scored.suppress) {
+          findings.push({
+            type: 'Auth Bypass',
+            severity: scored.severity,
+            cvssScore: scored.cvss,
+            endpoint: targetUrl,
+            parameter: 'Path Access',
+            payload: path,
+            evidence: `Protected path accessible without authentication (HTTP ${response.status}, ${response.body.length} bytes)`,
+            confidence: scored.confidence < 0.5 ? 'Low' : scored.confidence < 0.8 ? 'Medium' : 'High',
+            recommendation: 'Implement proper authentication and authorization checks on all administrative endpoints.',
+            suppress: scored.suppress
+          });
+        }
         // Only report once per base origin
         break;
       }
@@ -230,7 +342,8 @@ async function testParameter(endpoint, paramName, vulnType) {
         method: endpoint.method,
         payload,
         evidence: result.evidence,
-        confidence: result.confidence,
+        confidence: 'High', // Mapping 0.85+ to High since it's an enum
+        severity: getSeverityForType(vulnType), // helper
         recommendation: getRecommendation(vulnType),
       };
     }
@@ -345,6 +458,12 @@ function getRecommendation(type) {
       'Implement server-side session validation on every protected route. Use middleware-level authentication guards.',
   };
   return recs[type] || 'Consult OWASP guidelines for remediation of this vulnerability type.';
+}
+
+function getSeverityForType(type) {
+  if (type === 'SQL Injection' || type === 'Path Traversal' || type === 'Auth Bypass') return 'high';
+  if (type === 'XSS' || type === 'Header Injection') return 'medium';
+  return 'low';
 }
 
 module.exports = { scanAll, scanEndpoint, checkSecurityHeaders, checkAuthBypass };

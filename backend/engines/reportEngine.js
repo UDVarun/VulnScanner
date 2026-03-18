@@ -39,6 +39,9 @@ function generatePDF(scan, vulnerabilities) {
     doc.rect(0, 0, doc.page.width, doc.page.height).fill('#0d1117');
   });
 
+  // Keep only actual reportable vulnerabilities
+  const reportableVulns = vulnerabilities.filter(v => (v.severity || '').toLowerCase() !== 'info');
+
   // ─── COVER PAGE ───────────────────────────────────────────
   doc.rect(0, 0, doc.page.width, doc.page.height).fill('#0d1117');
 
@@ -88,11 +91,11 @@ function generatePDF(scan, vulnerabilities) {
 
   // Summary stats boxes
   const stats = [
-    { label: 'Critical', count: vulnerabilities.filter((v) => v.severity === 'Critical').length, color: '#ff0000' },
-    { label: 'High', count: vulnerabilities.filter((v) => v.severity === 'High').length, color: '#ff4444' },
-    { label: 'Medium', count: vulnerabilities.filter((v) => v.severity === 'Medium').length, color: '#ffaa00' },
-    { label: 'Low', count: vulnerabilities.filter((v) => v.severity === 'Low').length, color: '#00cc66' },
-    { label: 'Total', count: vulnerabilities.length, color: '#00d4ff' },
+    { label: 'Critical', count: reportableVulns.filter((v) => v.severity === 'Critical' || v.severity === 'critical').length, color: '#ff0000' },
+    { label: 'High', count: reportableVulns.filter((v) => v.severity === 'High' || v.severity === 'high').length, color: '#ff4444' },
+    { label: 'Medium', count: reportableVulns.filter((v) => v.severity === 'Medium' || v.severity === 'medium').length, color: '#ffaa00' },
+    { label: 'Low', count: reportableVulns.filter((v) => v.severity === 'Low' || v.severity === 'low').length, color: '#00cc66' },
+    { label: 'Total', count: reportableVulns.length, color: '#00d4ff' },
   ];
 
   const boxW = 85;
@@ -107,14 +110,14 @@ function generatePDF(scan, vulnerabilities) {
 
   // Risk rating
   const totalCritHigh = stats[0].count + stats[1].count;
-  const riskRating = totalCritHigh > 0 ? 'HIGH RISK' : vulnerabilities.length > 0 ? 'MEDIUM RISK' : 'LOW RISK';
-  const riskColor = totalCritHigh > 0 ? '#ff4444' : vulnerabilities.length > 0 ? '#ffaa00' : '#00cc66';
+  const riskRating = totalCritHigh > 0 ? 'HIGH RISK' : reportableVulns.length > 0 ? 'MEDIUM RISK' : 'LOW RISK';
+  const riskColor = totalCritHigh > 0 ? '#ff4444' : reportableVulns.length > 0 ? '#ffaa00' : '#00cc66';
 
   doc.rect(50, 200, doc.page.width - 100, 40).fill('#161b22');
   doc.fill(riskColor).fontSize(14).font('Helvetica-Bold').text(`Overall Risk Rating: ${riskRating}`, 60, 213);
 
   // ─── VULNERABILITY DETAILS ────────────────────────────────
-  if (vulnerabilities.length === 0) {
+  if (reportableVulns.length === 0) {
     doc.fill('#00cc66').fontSize(16).font('Helvetica-Bold').text('No vulnerabilities detected.', 50, 270, { align: 'center' });
   } else {
     doc.fill('#e6edf3').fontSize(14).font('Helvetica-Bold').text('VULNERABILITY FINDINGS', 50, 260);
@@ -123,7 +126,7 @@ function generatePDF(scan, vulnerabilities) {
     let vy = 290;
     let vulnIndex = 1;
 
-    for (const vuln of vulnerabilities) {
+    for (const vuln of reportableVulns) {
       // Page break if needed: require 230 points of clearance to prevent auto page-wrapping blank pages
       if (vy > doc.page.height - 230) {
         doc.addPage();
