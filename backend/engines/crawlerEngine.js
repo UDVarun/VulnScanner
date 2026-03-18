@@ -78,7 +78,7 @@ function extractEndpoints(html, pageUrl) {
     }
   });
 
-  return { links: Array.from(links), forms };
+  return { links: Array.from(links), formsCount: forms.length, forms };
 }
 
 /**
@@ -113,20 +113,26 @@ async function crawl(targetUrl, maxDepth = MAX_DEPTH) {
         continue;
       }
 
-      const { links, forms } = extractEndpoints(response.data, url);
+      const { links, forms, formsCount } = extractEndpoints(response.data, url);
 
       // Add current page as endpoint with query params
       const parsedUrl = new URL(url);
+      const searchParams = parsedUrl.searchParams;
+      const paramsCount = searchParams.size || searchParams.toString().split('&').filter(Boolean).length;
       const params = [];
-      parsedUrl.searchParams.forEach((value, key) => {
+      searchParams.forEach((value, key) => {
         params.push({ name: key, type: 'query' });
       });
 
       endpoints.push({
         url,
         method: 'GET',
-        params,
-        forms: forms.filter((f) => f.url === url),
+        params: paramsCount,
+        forms: formsCount,
+        status: response.status,
+        testedAt: new Date(),
+        rawParams: params,
+        rawForms: forms.filter((f) => f.url === url),
       });
 
       // BFS: enqueue new links
@@ -143,8 +149,12 @@ async function crawl(targetUrl, maxDepth = MAX_DEPTH) {
           endpoints.push({
             url: form.url,
             method: form.method,
-            params: form.params.map((p) => ({ name: p.name, type: 'form' })),
-            forms: [form],
+            params: form.params.length,
+            forms: 1, // It's a form action, so it counts as 1 form found
+            status: 0, // Not visited as a main page yet
+            testedAt: new Date(),
+            rawParams: form.params.map((p) => ({ name: p.name, type: 'form' })),
+            rawForms: [form],
           });
 
           if (!visited.has(form.url) && isSameOrigin(form.url, targetOrigin)) {

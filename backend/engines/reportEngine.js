@@ -31,6 +31,66 @@ function severityColor(severity) {
   }
 }
 
+function addEndpointsSection(doc, scan) {
+  const endpoints = scan.endpoints || [];
+
+  doc.addPage();
+  doc.rect(0, 0, doc.page.width, doc.page.height).fill('#0d1117');
+  
+  doc.fill('#00d4ff').fontSize(18).font('Helvetica-Bold').text('Endpoints Discovered', 50, 50);
+  doc.moveDown(0.5);
+  doc.fontSize(11).font('Helvetica').fillColor('#8b949e')
+    .text(`The crawler discovered ${endpoints.length} endpoint(s) during the scan.`);
+  doc.moveDown(1);
+
+  if (endpoints.length === 0) {
+    doc.fontSize(11).font('Helvetica').fillColor('#e6edf3')
+      .text('No endpoints were discovered. The target may have blocked crawling or returned no links.');
+    return;
+  }
+
+  // Table header
+  let ty = doc.y;
+  doc.fontSize(10).font('Helvetica-Bold').fillColor('#00d4ff');
+  doc.text('#', 50, ty, { width: 30 });
+  doc.text('URL', 80, ty, { width: 280 });
+  doc.text('Method', 360, ty, { width: 50 });
+  doc.text('Status', 410, ty, { width: 40 });
+  doc.text('Forms', 450, ty, { width: 40 });
+  doc.text('Params', 490, ty, { width: 50 });
+  doc.moveDown(0.3);
+
+  // Divider line
+  doc.moveTo(50, doc.y).lineTo(550, doc.y).strokeColor('#30363d').stroke();
+  doc.moveDown(0.3);
+
+  // Table rows
+  endpoints.forEach((ep, i) => {
+    if (doc.y > 750) {
+      doc.addPage();
+      doc.rect(0, 0, doc.page.width, doc.page.height).fill('#0d1117');
+      doc.y = 50;
+    }
+
+    const truncatedUrl = ep.url.length > 55
+      ? ep.url.substring(0, 52) + '...'
+      : ep.url;
+
+    let ry = doc.y;
+    doc.fontSize(9).font('Helvetica').fillColor(i % 2 === 0 ? '#e6edf3' : '#8b949e');
+    doc.text(String(i + 1), 50, ry, { width: 30 });
+    doc.text(truncatedUrl, 80, ry, { width: 280 });
+    doc.text(ep.method || 'GET', 360, ry, { width: 50 });
+    doc.text(String(ep.status || '-'), 410, ry, { width: 40 });
+    doc.text(String(ep.forms || 0), 450, ry, { width: 40 });
+    doc.text(String(ep.params || 0), 490, ry, { width: 50 });
+    doc.moveDown(0.25);
+    
+    doc.moveTo(50, doc.y).lineTo(550, doc.y).strokeColor('#1c2128').lineWidth(0.5).stroke();
+    doc.moveDown(0.2);
+  });
+}
+
 function generatePDF(scan, vulnerabilities) {
   const doc = new PDFDocument({ margin: 50, size: 'A4', bufferPages: true });
 
@@ -116,9 +176,25 @@ function generatePDF(scan, vulnerabilities) {
   doc.rect(50, 200, doc.page.width - 100, 40).fill('#161b22');
   doc.fill(riskColor).fontSize(14).font('Helvetica-Bold').text(`Overall Risk Rating: ${riskRating}`, 60, 213);
 
+  const isClean = reportableVulns.length === 0;
+  if (isClean) {
+    doc.moveDown(2);
+    doc.fontSize(13).font('Helvetica-Bold').fillColor('#22c55e') // green
+      .text('No Vulnerabilities Detected', 50, 260);
+    doc.moveDown(0.5);
+    doc.fontSize(11).font('Helvetica').fillColor('#e6edf3')
+      .text(
+        `VulnScanner completed a full scan of ${scan.targetUrl} and discovered ` +
+        `${scan.endpointCount || scan.totalEndpoints || 0} endpoint(s). No exploitable vulnerabilities ` +
+        `were identified. The site appears to be well-configured for the tested ` +
+        `vulnerability categories.`,
+        50, 285, { width: doc.page.width - 100 }
+      );
+  }
+
   // ─── VULNERABILITY DETAILS ────────────────────────────────
   if (reportableVulns.length === 0) {
-    doc.fill('#00cc66').fontSize(16).font('Helvetica-Bold').text('No vulnerabilities detected.', 50, 270, { align: 'center' });
+    // Already handled in executive summary for clean scans
   } else {
     doc.fill('#e6edf3').fontSize(14).font('Helvetica-Bold').text('VULNERABILITY FINDINGS', 50, 260);
     doc.moveTo(50, 278).lineTo(doc.page.width - 50, 278).strokeColor('#00d4ff').stroke();
@@ -204,6 +280,8 @@ function generatePDF(scan, vulnerabilities) {
       vulnIndex++;
     }
   }
+
+  addEndpointsSection(doc, scan);
 
   // ─── RECOMMENDATIONS SUMMARY ──────────────────────────────
   doc.addPage();

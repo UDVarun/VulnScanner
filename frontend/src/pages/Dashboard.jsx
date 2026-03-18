@@ -49,6 +49,9 @@ export default function Dashboard() {
       if (data.newVulnerability) {
         setLiveVulns((prev) => [{ ...data.newVulnerability, _id: Date.now() }, ...prev]);
       }
+      if (data.endpointCount !== undefined) {
+        setScan((prev) => prev ? { ...prev, endpointCount: data.endpointCount } : prev);
+      }
     });
 
     // Fallback polling every 3s if WS fails
@@ -127,7 +130,7 @@ export default function Dashboard() {
       {scan && (
         <div className="stat-cards mb-6">
           <div className="stat-card total">
-            <div className="stat-value">{scan.totalEndpoints || 0}</div>
+            <div className="stat-value">{scan.endpointCount || scan.totalEndpoints || 0}</div>
             <div className="stat-label">Endpoints Discovered</div>
           </div>
           <div className="stat-card high">

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { getResults, getReportUrl } from '../api/client';
 import SeverityBadge from '../components/SeverityBadge';
+import CleanScanPanel from '../components/CleanScanPanel';
 import {
   PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
@@ -68,6 +69,17 @@ export default function Results() {
   const pieData = SEVERITY_ORDER
     .map((s) => ({ name: s, value: vulns.filter((v) => v.severity === s).length }))
     .filter((d) => d.value > 0);
+
+  // Derive clean scan state
+  const summary = scan?.summary || {};
+  const hasRealVulnerabilities = (
+    (summary.critical || 0) +
+    (summary.high || 0) +
+    (summary.medium || 0) +
+    (summary.low || 0)
+  ) > 0;
+  const endpoints = scan?.endpoints || [];
+  const endpointCount = scan?.endpointCount || scan?.totalEndpoints || endpoints.length;
 
   if (loading) return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '300px' }}>
@@ -154,7 +166,7 @@ export default function Results() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             {[
               ['Status', <span style={{ color: 'var(--low)' }}>✅ {scan.status}</span>],
-              ['Endpoints', scan.totalEndpoints || 'N/A'],
+              ['Endpoints', endpointCount || 'N/A'],
               ['Completed', scan.completedAt ? new Date(scan.completedAt).toLocaleString() : 'N/A'],
               ['Duration', scan.completedAt ? `${Math.round((new Date(scan.completedAt) - new Date(scan.createdAt)) / 1000)}s` : 'N/A'],
             ].map(([label, value]) => (
@@ -167,81 +179,94 @@ export default function Results() {
         </div>
       </div>
 
-      {/* Filters + Table */}
-      <div className="card">
-        <div className="card-header">
-          <h2 className="card-title">Vulnerabilities ({filtered.length})</h2>
-        </div>
+      {/* Clean Scan Panel — shown when no real vulns */}
+      {!hasRealVulnerabilities && (
+        <CleanScanPanel
+          endpoints={endpoints}
+          endpointCount={endpointCount}
+          target={scan.targetUrl}
+          summary={scan.summary}
+          completedAt={scan.completedAt}
+        />
+      )}
 
-        {/* Severity filter */}
-        <div className="filter-bar mb-4">
-          {severities.map((s) => (
-            <button
-              key={s}
-              className={`filter-btn ${severityFilter === s ? (s === 'All' ? 'active' : `active-${s.toLowerCase()}`) : ''}`}
-              onClick={() => setSeverityFilter(s)}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-
-        {/* Type filter */}
-        <div className="filter-bar mb-4">
-          {vulnTypes.map((t) => (
-            <button
-              key={t}
-              className={`filter-btn ${typeFilter === t ? 'active' : ''}`}
-              onClick={() => setTypeFilter(t)}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-
-        {filtered.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-icon">✅</div>
-            <h3>No vulnerabilities found</h3>
-            <p>No issues match the current filters.</p>
+      {/* Vulnerability Table — shown only when real vulns exist */}
+      {hasRealVulnerabilities && (
+        <div className="card">
+          <div className="card-header">
+            <h2 className="card-title">Vulnerabilities ({filtered.length})</h2>
           </div>
-        ) : (
-          <div className="table-container">
-            <table className="vuln-table">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Severity</th>
-                  <th>Type</th>
-                  <th>Endpoint</th>
-                  <th>Param</th>
-                  <th>CVE ID</th>
-                  <th>CVSS</th>
-                  <th>Confidence</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((v, i) => (
-                  <tr key={v._id} onClick={() => navigate(`/details/${id}/${v._id}`)}>
-                    <td style={{ color: 'var(--text-muted)' }}>{i + 1}</td>
-                    <td><SeverityBadge severity={v.severity} /></td>
-                    <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{v.type}</td>
-                    <td className="url-cell">{v.endpoint}</td>
-                    <td><span className="tag">{v.parameter || 'N/A'}</span></td>
-                    <td>{v.cveId && v.cveId !== 'N/A' ? <span className="cve-badge">{v.cveId}</span> : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
-                    <td style={{ color: v.cvssScore >= 7 ? 'var(--high)' : v.cvssScore >= 4 ? 'var(--medium)' : 'var(--low)', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>
-                      {v.cvssScore || '—'}
-                    </td>
-                    <td style={{ color: v.confidence === 'High' ? 'var(--low)' : v.confidence === 'Medium' ? 'var(--medium)' : 'var(--text-muted)' }}>
-                      {v.confidence}
-                    </td>
+
+          {/* Severity filter */}
+          <div className="filter-bar mb-4">
+            {severities.map((s) => (
+              <button
+                key={s}
+                className={`filter-btn ${severityFilter === s ? (s === 'All' ? 'active' : `active-${s.toLowerCase()}`) : ''}`}
+                onClick={() => setSeverityFilter(s)}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+
+          {/* Type filter */}
+          <div className="filter-bar mb-4">
+            {vulnTypes.map((t) => (
+              <button
+                key={t}
+                className={`filter-btn ${typeFilter === t ? 'active' : ''}`}
+                onClick={() => setTypeFilter(t)}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+
+          {filtered.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon">✅</div>
+              <h3>No vulnerabilities found</h3>
+              <p>No issues match the current filters.</p>
+            </div>
+          ) : (
+            <div className="table-container">
+              <table className="vuln-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Severity</th>
+                    <th>Type</th>
+                    <th>Endpoint</th>
+                    <th>Param</th>
+                    <th>CVE ID</th>
+                    <th>CVSS</th>
+                    <th>Confidence</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                </thead>
+                <tbody>
+                  {filtered.map((v, i) => (
+                    <tr key={v._id} onClick={() => navigate(`/details/${id}/${v._id}`)}>
+                      <td style={{ color: 'var(--text-muted)' }}>{i + 1}</td>
+                      <td><SeverityBadge severity={v.severity} /></td>
+                      <td style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{v.type}</td>
+                      <td className="url-cell">{v.endpoint}</td>
+                      <td><span className="tag">{v.parameter || 'N/A'}</span></td>
+                      <td>{v.cveId && v.cveId !== 'N/A' ? <span className="cve-badge">{v.cveId}</span> : <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
+                      <td style={{ color: v.cvssScore >= 7 ? 'var(--high)' : v.cvssScore >= 4 ? 'var(--medium)' : 'var(--low)', fontWeight: 700, fontFamily: 'JetBrains Mono, monospace' }}>
+                        {v.cvssScore || '—'}
+                      </td>
+                      <td style={{ color: v.confidence === 'High' ? 'var(--low)' : v.confidence === 'Medium' ? 'var(--medium)' : 'var(--text-muted)' }}>
+                        {v.confidence}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

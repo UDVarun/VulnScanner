@@ -29,6 +29,23 @@ const ScanSchema = new mongoose.Schema({
     type: Number,
     default: 0,
   },
+  endpointCount: {
+    type: Number,
+    default: 0,
+  },
+  endpoints: {
+    type: [
+      {
+        url: { type: String, required: true },
+        method: { type: String, default: 'GET' },
+        forms: { type: Number, default: 0 },
+        params: { type: Number, default: 0 },
+        status: { type: Number, default: 0 },
+        testedAt: { type: Date, default: Date.now },
+      },
+    ],
+    default: [],
+  },
   summary: {
     critical: { type: Number, default: 0 },
     high: { type: Number, default: 0 },

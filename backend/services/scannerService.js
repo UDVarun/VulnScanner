@@ -39,6 +39,7 @@ async function startScan(scanId, targetUrl, io) {
       progress: 5,
       status: 'running',
       activity: 'Crawling target for endpoints...',
+      endpointCount: 0,
     });
 
     // ── PHASE 2: Crawl ────────────────────────────────────
@@ -53,6 +54,15 @@ async function startScan(scanId, targetUrl, io) {
     }
 
     await Scan.findByIdAndUpdate(scanId, {
+      endpoints: endpoints.map(ep => ({
+        url: ep.url,
+        method: ep.method || 'GET',
+        forms: ep.forms || 0,
+        params: ep.params || 0,
+        status: ep.status || 0,
+        testedAt: ep.testedAt || new Date()
+      })),
+      endpointCount: endpoints.length,
       totalEndpoints: endpoints.length,
       progress: 20,
       currentActivity: `Discovered ${endpoints.length} endpoints. Starting vulnerability scan...`,
@@ -61,6 +71,7 @@ async function startScan(scanId, targetUrl, io) {
     emitProgress(io, scanId, {
       progress: 20,
       activity: `Discovered ${endpoints.length} endpoints. Starting vulnerability scan...`,
+      endpointCount: endpoints.length,
       totalEndpoints: endpoints.length,
     });
 
@@ -78,6 +89,7 @@ async function startScan(scanId, targetUrl, io) {
         progress: pct,
         activity: `Scanning endpoint ${scanned} of ${total}...`,
         scannedEndpoints: scanned,
+        endpointCount: total,
       });
     };
 
@@ -151,6 +163,7 @@ async function startScan(scanId, targetUrl, io) {
           cveId: cveData.cveId,
           cvssScore: cveData.cvssScore,
         },
+        endpointCount: endpoints.length,
       });
     }
 
@@ -179,6 +192,7 @@ async function startScan(scanId, targetUrl, io) {
       status: 'completed',
       activity: 'Scan complete.',
       summary,
+      endpointCount: endpoints.length,
     });
 
     console.log(`[ScanService] Scan ${scanId} completed. Found ${savedVulns.length} vulnerabilities.`);
