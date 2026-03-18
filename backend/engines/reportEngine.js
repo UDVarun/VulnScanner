@@ -32,7 +32,7 @@ function severityColor(severity) {
 }
 
 function generatePDF(scan, vulnerabilities) {
-  const doc = new PDFDocument({ margin: 50, size: 'A4' });
+  const doc = new PDFDocument({ margin: 50, size: 'A4', bufferPages: true });
 
   // ─── COVER PAGE ───────────────────────────────────────────
   doc.rect(0, 0, doc.page.width, doc.page.height).fill('#0d1117');
