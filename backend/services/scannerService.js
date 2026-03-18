@@ -45,29 +45,27 @@ async function startScan(scanId, targetUrl, io) {
     // ── PHASE 2: Crawl ────────────────────────────────────
     let endpoints = [];
     try {
-      endpoints = await crawl(targetUrl, 2);
-      console.log(`[ScanService] Crawled ${endpoints.length} endpoints`);
+      endpoints = await crawl(targetUrl);
+      console.log(`[scanner] Crawler returned ${endpoints.length} endpoints`);
     } catch (err) {
       console.error(`[ScanService] Crawl error: ${err.message}`);
-      // If crawl fails entirely, create a minimal endpoint for the root URL
     }
 
-    // If crawler found nothing, add root URL as fallback so scanner still tests it
+    // Safety net: if crawler found nothing, still test the root URL
     if (endpoints.length === 0) {
-      console.warn(`[ScanService] Crawler found 0 endpoints for ${targetUrl}. Adding root as fallback.`);
+      console.warn(`[scanner] 0 endpoints found — using root URL fallback`);
       endpoints = [{
-        url: targetUrl,
-        method: 'GET',
-        forms: 0,
-        params: 0,
-        status: 200,
-        testedAt: new Date(),
-        rawParams: [],
-        rawForms: [],
+        url:      targetUrl,
+        method:   'GET',
+        forms:    0,
+        params:   0,
+        status:   200,
+        testedAt: new Date()
       }];
 
       if (io) {
-        io.to(scanId).emit('scan_progress', { scanId,
+        io.to(scanId).emit('scan_progress', {
+          scanId,
           progress: 20,
           activity: 'Crawler found limited endpoints. Testing root URL directly...',
           endpointCount: 1,
