@@ -15,6 +15,9 @@ frontend/build/
 *.log
 npm-debug.log*
 
+# Docker volumes (local)
+data/
+
 # OS
 .DS_Store
 Thumbs.db
