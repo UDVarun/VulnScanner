@@ -1,0 +1,63 @@
+version: '3.9'
+
+services:
+  # ── MongoDB ────────────────────────────────────────────
+  mongodb:
+    image: mongo:7
+    container_name: vulnscanner-mongodb
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - vulnscanner-net
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── Backend (Express + Scanner) ────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: vulnscanner-backend
+    restart: unless-stopped
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/vulnscanner
+      - PORT=5000
+      - FRONTEND_URL=http://localhost:3000
+      - NVD_API_KEY=${NVD_API_KEY:-}
+      - NODE_ENV=production
+    ports:
+      - "5000:5000"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - vulnscanner-net
+
+  # ── Frontend (React + Nginx) ────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=http://localhost:5000
+    container_name: vulnscanner-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - vulnscanner-net
+
+volumes:
+  mongo_data:
+    driver: local
+
+networks:
+  vulnscanner-net:
+    driver: bridge
