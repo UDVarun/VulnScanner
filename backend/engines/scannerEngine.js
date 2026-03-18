@@ -93,13 +93,14 @@ const headerRecommendations = {
   'Cache-Control': 'Add Cache-Control: no-store for sensitive pages.'
 };
 
-const REQUEST_TIMEOUT = 5000;
+const REQUEST_TIMEOUT = 15000;
 const DELAY_BETWEEN_REQUESTS = 20; // ms — fast timing
 
 const DEFAULT_HEADERS = {
-  'User-Agent': 'VulnScanner/1.0 (Security Research Tool)',
-  Accept: 'text/html,application/xhtml+xml,*/*;q=0.9',
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
   'Accept-Language': 'en-US,en;q=0.5',
+  'Connection': 'keep-alive',
 };
 
 // Security headers to check

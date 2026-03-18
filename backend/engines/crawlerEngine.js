@@ -5,14 +5,18 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
 
-const REQUEST_TIMEOUT = 10000; // 10 seconds
-const MAX_DEPTH = 2;
-const MAX_URLS = 30;
+const REQUEST_TIMEOUT = 15000; // 15 seconds
+const MAX_DEPTH = 3;
+const MAX_URLS = 50;
 
+// Browser-like User-Agent to avoid bot-blocking
 const DEFAULT_HEADERS = {
-  'User-Agent': 'VulnScanner/1.0 (Security Research Tool)',
-  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
   'Accept-Language': 'en-US,en;q=0.5',
+  'Accept-Encoding': 'gzip, deflate',
+  'Connection': 'keep-alive',
+  'Upgrade-Insecure-Requests': '1',
 };
 
 /**
@@ -37,6 +41,21 @@ function isSameOrigin(url, targetOrigin) {
   } catch {
     return false;
   }
+}
+
+/**
+ * Returns true if this content type is truly non-crawlable binary content.
+ * Note: we do NOT skip text/html=false here — we also check the body for HTML.
+ */
+function isBinaryContent(contentType) {
+  if (!contentType) return false;
+  return (
+    contentType.includes('application/pdf') ||
+    contentType.includes('application/zip') ||
+    contentType.includes('application/octet-stream') ||
+    contentType.includes('application/exe') ||
+    (contentType.includes('image/') && !contentType.includes('image/svg'))
+  );
 }
 
 /**
@@ -109,11 +128,36 @@ async function crawl(targetUrl, maxDepth = MAX_DEPTH) {
       });
 
       const contentType = response.headers['content-type'] || '';
-      if (!contentType.includes('text/html')) {
+
+      // Skip truly binary content (images, PDFs, ZIPs, etc.) but NOT wrong-typed HTML
+      if (isBinaryContent(contentType)) {
+        console.log(`[Crawler] Skipping binary content at ${url} (${contentType})`);
+        // Still record the URL as an endpoint
+        const parsedUrl = new URL(url);
+        const searchParams = parsedUrl.searchParams;
+        const paramsCount = searchParams.size || searchParams.toString().split('&').filter(Boolean).length;
+        endpoints.push({
+          url,
+          method: 'GET',
+          params: paramsCount,
+          forms: 0,
+          status: response.status,
+          testedAt: new Date(),
+          rawParams: [],
+          rawForms: [],
+        });
         continue;
       }
 
-      const { links, forms, formsCount } = extractEndpoints(response.data, url);
+      // Check if the body looks like HTML (even if Content-Type says otherwise)
+      const body = typeof response.data === 'string' ? response.data : '';
+      const looksLikeHtml = (
+        body.includes('<html') ||
+        body.includes('<body') ||
+        body.includes('<a ') ||
+        body.includes('<form') ||
+        contentType.includes('text/html')
+      );
 
       // Add current page as endpoint with query params
       const parsedUrl = new URL(url);
@@ -123,6 +167,18 @@ async function crawl(targetUrl, maxDepth = MAX_DEPTH) {
       searchParams.forEach((value, key) => {
         params.push({ name: key, type: 'query' });
       });
+
+      // Parse HTML if the body looks like HTML regardless of Content-Type
+      let formsCount = 0;
+      let links = [];
+      let forms = [];
+
+      if (looksLikeHtml) {
+        const extracted = extractEndpoints(body, url);
+        links = extracted.links;
+        forms = extracted.forms;
+        formsCount = extracted.formsCount;
+      }
 
       endpoints.push({
         url,
@@ -136,7 +192,7 @@ async function crawl(targetUrl, maxDepth = MAX_DEPTH) {
       });
 
       // BFS: enqueue new links
-      if (depth < maxDepth) {
+      if (depth < maxDepth && looksLikeHtml) {
         for (const link of links) {
           if (!visited.has(link) && isSameOrigin(link, targetOrigin)) {
             visited.add(link);
@@ -144,26 +200,46 @@ async function crawl(targetUrl, maxDepth = MAX_DEPTH) {
           }
         }
 
-        // Enqueue form action URLs
+        // Enqueue form action URLs and record them as endpoints
         for (const form of forms) {
-          endpoints.push({
-            url: form.url,
-            method: form.method,
-            params: form.params.length,
-            forms: 1, // It's a form action, so it counts as 1 form found
-            status: 0, // Not visited as a main page yet
-            testedAt: new Date(),
-            rawParams: form.params.map((p) => ({ name: p.name, type: 'form' })),
-            rawForms: [form],
-          });
+          if (!endpoints.find((e) => e.url === form.url && e.method === form.method)) {
+            endpoints.push({
+              url: form.url,
+              method: form.method,
+              params: form.params.length,
+              forms: 1, // It's a form action, so it counts as 1 form found
+              status: 0, // Not visited as a main page yet
+              testedAt: new Date(),
+              rawParams: form.params.map((p) => ({ name: p.name, type: 'form' })),
+              rawForms: [form],
+            });
+          }
 
           if (!visited.has(form.url) && isSameOrigin(form.url, targetOrigin)) {
             visited.add(form.url);
+            queue.push({ url: form.url, depth: depth + 1 });
           }
         }
       }
     } catch (err) {
       console.warn(`[Crawler] Failed to fetch ${url}: ${err.message}`);
+      // Still add this URL to endpoints so scanner can test it
+      try {
+        const parsedUrl = new URL(url);
+        const paramsCount = parsedUrl.searchParams.size || 0;
+        endpoints.push({
+          url,
+          method: 'GET',
+          params: paramsCount,
+          forms: 0,
+          status: err.response?.status || 0,
+          testedAt: new Date(),
+          rawParams: [],
+          rawForms: [],
+        });
+      } catch {
+        // ignore URL parse errors
+      }
     }
   }
 

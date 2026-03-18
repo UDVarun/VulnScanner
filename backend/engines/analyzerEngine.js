@@ -34,9 +34,12 @@ const SQL_ERROR_PATTERNS = [
 // XSS detection: payload reflection
 function detectXSSReflection(payload, responseBody) {
   if (!responseBody) return false;
-  // Check if the exact unencoded payload is reflected.
-  // Do NOT flag if the payload is only reflected in a safely encoded form.
-  return responseBody.includes(payload);
+  // 1. Exact match — full payload reflected unencoded
+  if (responseBody.includes(payload)) return true;
+  // 2. Partial match — server encodes < and > but reflects the rest (e.g. alert or script)
+  const stripped = payload.replace(/[<>"']/g, '');
+  if (stripped.length > 4 && responseBody.includes(stripped)) return true;
+  return false;
 }
 
 // SQL injection detection
