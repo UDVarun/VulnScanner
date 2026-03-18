@@ -147,6 +147,21 @@ async function checkAuthBypass(endpoint) {
   const base = new URL(endpoint.url);
   const origin = base.origin;
 
+  // First check if the site blindly returns 200 for random non-existent paths (soft 404s)
+  try {
+    const randomPathResp = await makeRequest(origin + '/nonexistent-random-path-' + Date.now());
+    if (
+      randomPathResp.status === 200 &&
+      !randomPathResp.body.toLowerCase().includes('not found') &&
+      !randomPathResp.body.toLowerCase().includes('404')
+    ) {
+      // Site likely returns 200 for everything, any auth bypass check will be a false positive
+      return [];
+    }
+  } catch {
+    // ignore
+  }
+
   for (const path of AUTH_PATHS) {
     const targetUrl = origin + path;
     try {

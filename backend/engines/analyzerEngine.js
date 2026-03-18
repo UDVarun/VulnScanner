@@ -22,7 +22,6 @@ const SQL_ERROR_PATTERNS = [
   /mssql_query\(\)/i,
   /ODBC Driver.*SQL Server/i,
   /SQLite.*Error/i,
-  /syntax error/i,
   /mysql_fetch_array\(\)/i,
   /mysql_fetch_assoc\(\)/i,
   /mysql_num_rows\(\)/i,
@@ -36,13 +35,9 @@ const SQL_ERROR_PATTERNS = [
 // XSS detection: payload reflection
 function detectXSSReflection(payload, responseBody) {
   if (!responseBody) return false;
-  // Check multiple forms of the payload to handle partial encoding
-  const variants = [
-    payload,
-    payload.replace(/</g, '&lt;').replace(/>/g, '&gt;'),
-    encodeURIComponent(payload),
-  ];
-  return variants.some((v) => responseBody.includes(v));
+  // Check if the exact unencoded payload is reflected.
+  // Do NOT flag if the payload is only reflected in a safely encoded form.
+  return responseBody.includes(payload);
 }
 
 // SQL injection detection
@@ -126,8 +121,8 @@ function analyze(type, payload, baseline, injected) {
 
     case 'Header Injection': {
       // Check if CRLF was processed (header appears in response)
-      const responseHeaders = JSON.stringify(injected.headers || {});
-      const injected_val = responseHeaders.includes('Injected') || responseHeaders.includes('injected');
+      const headers = injected.headers || {};
+      const injected_val = Object.keys(headers).some(k => k.toLowerCase() === 'injected' || k.toLowerCase() === 'injected-header');
       return {
         vulnerable: injected_val,
         evidence: injected_val ? 'CRLF injection reflected in response headers' : 'No header injection detected',
@@ -137,8 +132,8 @@ function analyze(type, payload, baseline, injected) {
 
     case 'Path Traversal': {
       const body = (injected.body || '').substring(0, 10000);
-      const etcPasswd = /root:.*:0:0:|daemon:|bin:|sys:/i.test(body);
-      const winHosts = /# Copyright.*Microsoft|127\.0\.0\.1.*localhost/i.test(body);
+      const etcPasswd = /root:.*:0:0:/i.test(body);
+      const winHosts = /127\.0\.0\.1\s+localhost/i.test(body) || /# Copyright.*Microsoft.*Windows/i.test(body);
       const vulnerable = etcPasswd || winHosts;
       return {
         vulnerable,
